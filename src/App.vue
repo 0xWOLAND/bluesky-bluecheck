@@ -12,6 +12,44 @@ const error = ref('')
 const success = ref(false)
 const isVerified = ref(false)
 const checkingTwitter = ref(false)
+const verificationId = ref('')
+const verificationStarted = ref(false)
+const checkingTweet = ref(false)
+
+const startVerification = async () => {
+  if (!formData.value.twitter) {
+    error.value = 'Please enter a Twitter username'
+    return
+  }
+
+  error.value = ''
+  verificationStarted.value = true
+  isLoading.value = true
+
+  try {
+    const response = await fetch('http://localhost:3000/start-verification', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username: formData.value.twitter,
+      }),
+    })
+
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to start verification')
+    }
+
+    verificationId.value = data.verificationId
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to start verification'
+    verificationStarted.value = false
+  } finally {
+    isLoading.value = false
+  }
+}
 
 const checkTwitterVerification = async () => {
   if (!formData.value.twitter) {
@@ -38,6 +76,9 @@ const checkTwitterVerification = async () => {
 
     if (!data.verified) {
       error.value = 'Only verified Twitter users can create DNS records'
+    } else {
+      // If verified, start the tweet verification process
+      await startVerification()
     }
   } catch (e) {
     error.value = 'Failed to verify Twitter status'
@@ -79,6 +120,8 @@ const handleSubmit = async () => {
     success.value = true
     formData.value = { host: '', value: '', twitter: '' }
     isVerified.value = false
+    verificationStarted.value = false
+    verificationId.value = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'An error occurred'
   } finally {
@@ -109,7 +152,14 @@ const handleSubmit = async () => {
             {{ checkingTwitter ? 'Checking...' : 'Verify' }}
           </button>
         </div>
-        <div v-if="isVerified" class="verified-badge">✓ Verified</div>
+        <div v-if="isVerified" class="verified-badge">✓ Twitter Verified</div>
+      </div>
+
+      <div v-if="verificationStarted" class="verification-instructions">
+        <h3>Tweet Verification Required</h3>
+        <p>Please tweet the following verification code:</p>
+        <div class="verification-code">{{ verificationId }}</div>
+        <p class="help-text">After tweeting, continue with the form below</p>
       </div>
 
       <div class="form-group">
@@ -120,7 +170,7 @@ const handleSubmit = async () => {
           type="text"
           placeholder="your-handle"
           required
-          :disabled="!isVerified"
+          :disabled="!isVerified || !verificationStarted"
         />
         <small class="help-text">Will create: _atproto.[subdomain].bluecheck.id</small>
       </div>
@@ -133,11 +183,11 @@ const handleSubmit = async () => {
           type="text"
           placeholder="did=did:plc:1234..."
           required
-          :disabled="!isVerified"
+          :disabled="!isVerified || !verificationStarted"
         />
       </div>
 
-      <button type="submit" :disabled="isLoading || !isVerified">
+      <button type="submit" :disabled="isLoading || !isVerified || !verificationStarted">
         {{ isLoading ? 'Creating...' : 'Create DNS Record' }}
       </button>
 
@@ -197,7 +247,7 @@ button:disabled {
 
 input::placeholder {
   color: #999;
-  opacity: 1; /* Firefox */
+  opacity: 1;
 }
 
 .error {
@@ -249,5 +299,28 @@ input::placeholder {
 input:disabled {
   background-color: #f5f5f5;
   cursor: not-allowed;
+}
+
+.verification-instructions {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+}
+
+.verification-instructions h3 {
+  margin: 0 0 1rem 0;
+  color: #1da1f2;
+}
+
+.verification-code {
+  padding: 0.75rem;
+  background-color: #e9ecef;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 1.1rem;
+  margin: 0.5rem 0;
+  word-break: break-all;
 }
 </style>
