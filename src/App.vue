@@ -4,13 +4,55 @@ import { ref } from 'vue'
 const formData = ref({
   host: '',
   value: '',
+  twitter: '',
 })
 
 const isLoading = ref(false)
 const error = ref('')
 const success = ref(false)
+const isVerified = ref(false)
+const checkingTwitter = ref(false)
+
+const checkTwitterVerification = async () => {
+  if (!formData.value.twitter) {
+    error.value = 'Please enter a Twitter username'
+    return
+  }
+
+  checkingTwitter.value = true
+  error.value = ''
+
+  try {
+    const response = await fetch('http://localhost:3000/check-twitter', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username: formData.value.twitter,
+      }),
+    })
+
+    const data = await response.json()
+    isVerified.value = data.verified
+
+    if (!data.verified) {
+      error.value = 'Only verified Twitter users can create DNS records'
+    }
+  } catch (e) {
+    error.value = 'Failed to verify Twitter status'
+    isVerified.value = false
+  } finally {
+    checkingTwitter.value = false
+  }
+}
 
 const handleSubmit = async () => {
+  if (!isVerified.value) {
+    error.value = 'Please verify your Twitter account first'
+    return
+  }
+
   isLoading.value = true
   error.value = ''
   success.value = false
@@ -24,6 +66,7 @@ const handleSubmit = async () => {
       body: JSON.stringify({
         host: formData.value.host,
         value: formData.value.value,
+        username: formData.value.twitter,
       }),
     })
 
@@ -34,7 +77,8 @@ const handleSubmit = async () => {
     }
 
     success.value = true
-    formData.value = { host: '', value: '' }
+    formData.value = { host: '', value: '', twitter: '' }
+    isVerified.value = false
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'An error occurred'
   } finally {
@@ -47,8 +91,37 @@ const handleSubmit = async () => {
   <div class="form-container">
     <form @submit.prevent="handleSubmit">
       <div class="form-group">
+        <label for="twitter">Twitter Username:</label>
+        <div class="twitter-input">
+          <input
+            id="twitter"
+            v-model="formData.twitter"
+            type="text"
+            placeholder="@username"
+            required
+          />
+          <button
+            type="button"
+            @click="checkTwitterVerification"
+            :disabled="checkingTwitter"
+            class="verify-button"
+          >
+            {{ checkingTwitter ? 'Checking...' : 'Verify' }}
+          </button>
+        </div>
+        <div v-if="isVerified" class="verified-badge">✓ Verified</div>
+      </div>
+
+      <div class="form-group">
         <label for="host">Subdomain:</label>
-        <input id="host" v-model="formData.host" type="text" placeholder="your-handle" required />
+        <input
+          id="host"
+          v-model="formData.host"
+          type="text"
+          placeholder="your-handle"
+          required
+          :disabled="!isVerified"
+        />
         <small class="help-text">Will create: _atproto.[subdomain].bluecheck.id</small>
       </div>
 
@@ -60,10 +133,11 @@ const handleSubmit = async () => {
           type="text"
           placeholder="did=did:plc:1234..."
           required
+          :disabled="!isVerified"
         />
       </div>
 
-      <button type="submit" :disabled="isLoading">
+      <button type="submit" :disabled="isLoading || !isVerified">
         {{ isLoading ? 'Creating...' : 'Create DNS Record' }}
       </button>
 
@@ -149,5 +223,31 @@ input::placeholder {
   margin-top: 0.25rem;
   font-size: 0.875rem;
   color: #666;
+}
+
+.twitter-input {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.verify-button {
+  width: auto;
+  padding: 0.5rem 1rem;
+  background-color: #1da1f2;
+}
+
+.verify-button:hover:not(:disabled) {
+  background-color: #1a91da;
+}
+
+.verified-badge {
+  color: #1da1f2;
+  font-weight: bold;
+  margin-top: 0.5rem;
+}
+
+input:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
 }
 </style>
